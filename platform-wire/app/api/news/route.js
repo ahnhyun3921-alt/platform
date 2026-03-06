@@ -14,11 +14,8 @@ export async function GET() {
     'anthropic-version': '2023-06-01',
   };
 
-  const userMsg = `현재 날짜: ${todayFmt}
-최근 7일(${sevenFmt} ~ ${todayFmt}) 사이 실제로 이슈가 됐던 플랫폼 비즈니스·디지털 대전환 관련 국내외 뉴스를 웹에서 검색해서 20개 찾아줘.
-국내 10개(조선비즈·매일경제·한국경제·블로터·전자신문 등), 해외 10개(TechCrunch·WSJ·Bloomberg·Reuters·FT 등).
-규칙: JSON 배열만 출력. 제목·요약은 한국어. 배열은 주목도·화제성 높은 순.
-형식: [{"title":"한국어제목","summary":"한국어요약2문장(100자이내)","source":"언론사","url":"실제URL","date":"YYYY.MM.DD","country":"KR또는GLOBAL","tag":"플랫폼BM|DX|AI전략|M&A|핀테크|이커머스|모빌리티|빅테크 중하나"}]`;
+  const userMsg = `날짜: ${todayFmt}. 최근 7일(${sevenFmt}~${todayFmt}) 플랫폼 비즈니스·DX 뉴스 중 가장 화제되고 흥미로운 10개만. 국내 5개, 해외 5개. JSON 배열만 출력. 한국어. 주목도 순.
+형식: [{"title":"한국어제목","summary":"한국어요약(80자이내)","source":"언론사","url":"URL","date":"YYYY.MM.DD","country":"KR또는GLOBAL","tag":"플랫폼BM|DX|AI전략|M&A|핀테크|이커머스|모빌리티|빅테크 중하나"}]`;
 
   try {
     let messages = [{ role: 'user', content: userMsg }];
@@ -31,9 +28,9 @@ export async function GET() {
         headers: HEADERS,
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 4000,
+          max_tokens: 2000,
           tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-          system: 'You are a JSON API. After searching the web, output ONLY a valid JSON array. No markdown. No explanation. First character must be [.',
+          system: 'JSON API. Output ONLY a valid JSON array starting with [.',
           messages,
         })
       });
@@ -45,29 +42,23 @@ export async function GET() {
       if (data.stop_reason !== 'tool_use') break;
 
       messages.push({ role: 'assistant', content: data.content });
-
       const toolResults = data.content
         .filter(c => c.type === 'tool_use')
         .map(c => ({
           type: 'tool_result',
           tool_use_id: c.id,
-          content: `"${c.input?.query || ''}" 검색 완료. 이제 JSON 배열을 출력해주세요.`,
+          content: `"${c.input?.query || ''}" 검색 완료. JSON 배열 출력해줘.`,
         }));
-
       messages.push({ role: 'user', content: toolResults });
       loopCount++;
     }
 
-    const text = (data.content || [])
-      .filter(c => c.type === 'text')
-      .map(c => c.text)
-      .join('');
-
-    console.log('Response text:', text.substring(0, 300));
+    const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+    console.log('Response:', text.substring(0, 300));
 
     const parsed = extractJSON(text);
     if (!parsed?.length) {
-      return Response.json({ error: 'JSON 파싱 실패', raw: text.substring(0, 500) }, { status: 500 });
+      return Response.json({ error: 'JSON 파싱 실패', raw: text.substring(0, 300) }, { status: 500 });
     }
 
     return Response.json({ news: parsed.filter(i => i.title?.length > 3) });
